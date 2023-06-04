@@ -1,0 +1,385 @@
+---
+title: "TRABALHO DA DISCIPLINA"
+author: "Victor C. A. Lima, Thiago de Paula Drulla, Renan R. Alves Santos"
+date: "04/06/2023"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1 Pesquisa com Dados de Satélite (Satellite)
+
+Tarefas:
+
+1.  Treine modelos RandomForest, SVM e RNA para predição destes dados.
+2.  Escolha o melhor modelo com base em suas matrizes de confusão.
+3.  Treine o modelo final com todos os dados e faça a predição na base completa.
+4.  Analise o resultado.
+5.  Salve este modelo final
+
+<br>
+
+##### Importando dados
+
+```         
+library(mlbench)
+data(Satellite)
+```
+
+<br>
+
+##### Separando os dados espectrais para o pixel central
+
+```         
+data <- data.frame(Satellite[c("x.17", "x.18", "x.19", "x.20", "classes")])
+```
+
+<br>
+
+##### Separando a base de treino e teste
+
+```         
+library("caret")
+indices <- createDataPartition(data$classes, p=0.80, list=FALSE)
+treino <- data[indices,]
+teste <- data[-indices,]
+```
+
+<br>
+
+##### Defindo seed constante
+
+```         
+set.seed(7)
+```
+
+<br>
+
+##### Criando Modelos
+
+```         
+rf <- train(classes~., data=treino, method="rf")
+svm <- train(classes~., data=treino, method="svmRadial")
+rna <- train(classes~., data=treino, method="nnet", trace=FALSE)
+```
+
+<br>
+
+##### Predição dos Modelos
+
+```         
+predicoes.rf <- predict(rf, teste)
+predicoes.svm <- predict(svm, teste)
+predicoes.rna <- predict(rna, teste)
+```
+
+<br>
+
+##### Gerando as Matrizes de Confusão
+
+```         
+confusionMatrix(predicoes.rf, teste$classes)
+confusionMatrix(predicoes.svm, teste$classes)
+confusionMatrix(predicoes.rna, teste$classes)
+```
+
+<br>
+
+##### Matriz de confusão Random Forest
+
+```         
+Prediction            red soil cotton crop grey soil damp grey soil vegetation stubble very damp grey soil
+red soil                 296           0         1              0                  5                   0
+cotton crop                0         129         0              0                  2                   0
+grey soil                  8           0       255             33                  1                  18
+damp grey soil             0           2        10             52                  1                  35
+vegetation stubble         2           8         0              0                118                   7
+very damp grey soil        0           1         5             40                 14                 241
+
+Accuracy : 0.8497  
+```
+
+<br>
+
+##### Matriz de confusão SVM
+
+```         
+Prediction            red soil cotton crop grey soil damp grey soil vegetation stubble very damp grey soil
+red soil                 294           0         0              0                 12                   0
+cotton crop                0         126         0              0                  0                   0
+grey soil                 10           0       260             36                  0                  13
+damp grey soil             0           0        11             57                  1                  29
+vegetation stubble         2          10         0              0                107                   5
+very damp grey soil        0           4         0             32                 21                 254
+
+Accuracy : 0.8551  
+```
+
+<br>
+
+##### Matriz de confusão RNA
+
+```         
+Prediction            red soil cotton crop grey soil damp grey soil vegetation stubble very damp grey soil
+red soil                 282           0         1              0                 11                   0
+cotton crop                1         123         0              0                  3                   0
+grey soil                 16           0       108             31                  0                  18
+damp grey soil             0           0         0              0                  0                   0
+vegetation stubble         7          16         2              2                 98                  10
+very damp grey soil        0           1       160             92                 29                 273
+
+Accuracy : 0.6885 
+```
+
+<br>
+
+### Escolha do modelo
+
+Dentre os 3 modelos testados o que apresentou melhor resultado em acurácia foi: SVM <br>
+
+##### Retreinando melhor modelo
+
+```         
+svmFinal <- train(classes~., data=data, method="svmRadial")
+predicoes.svmFinal <- predict(svmFinal, teste)
+confusionMatrix(predicoes.svmFinal, teste$classes)
+```
+
+<br>
+
+##### Matriz de confusão do modelo escolhido e retreinado
+
+```         
+Prediction            red soil cotton crop grey soil damp grey soil vegetation stubble very damp grey soil
+red soil                 297           0         0              0                 10                   0
+cotton crop                0         128         0              0                  0                   0
+grey soil                  7           0       260             36                  0                  13
+damp grey soil             0           1        11             58                  1                  29
+vegetation stubble         2          10         0              0                110                   4
+very damp grey soil        0           1         0             31                 20                 255
+
+Accuracy : 0.8629
+```
+
+<br>
+
+##### Verificando os parâmetros do modelo final
+
+```         
+Support Vector Machines with Radial Basis Function Kernel 
+
+5151 samples
+4 predictor
+6 classes: 'red soil', 'cotton crop', 'grey soil', 'damp grey soil', 'vegetation stubble', 'very damp grey soil' 
+
+No pre-processing
+Resampling: Bootstrapped (25 reps) 
+Summary of sample sizes: 5151, 5151, 5151, 5151, 5151, 5151, ... 
+Resampling results across tuning parameters:
+  
+  C     Accuracy   Kappa    
+0.25  0.8570144  0.8228464
+0.50  0.8587932  0.8250666
+1.00  0.8598336  0.8263926
+
+Tuning parameter 'sigma' was held constant at a value of 0.86087
+Accuracy was used to select the optimal model using the largest value.
+The final values used for the model were sigma = 0.86087 and C = 1.
+```
+
+<br>
+
+##### Gerando modelo a partir da biblioteca raiz do modelo
+
+```         
+library("kernlab")
+final_model <- ksvm(
+  type="C-svc",
+  classes~.,
+  data=data,
+  kernel="rbfdot",
+  C=1.0,
+  kpar=list(sigma=0.86087)
+)
+```
+
+<br>
+
+##### Gerando a predição do modelo usando a base total de dados
+
+```         
+final_predict.svm <- predict(final_model, data)
+```
+
+<br>
+
+##### Vendo a nova matriz de confusão desse modelo total
+
+```         
+confusionMatrix(final_predict.svm, data$classes)
+```
+
+<br>
+
+##### Salvando o modelo em um arquivo .RDS
+
+```         
+saveRDS(final_model, "satellite_svm.rds")
+```
+
+<br>
+
+<br>
+
+## 2 Estimativa de Volumes de Árvores
+
+Tarefas
+
+1.  Carregar o arquivo Volumes.csv (http://www.razer.net.br/datasets/Volumes.csv)
+2.  Eliminar a coluna NR, que só apresenta um número sequencial
+3.  Criar partição de dados: treinamento 80%, teste 20%
+4.  Usando o pacote "caret", treinar os modelos: Random Forest (rf), SVM (svmRadial), Redes Neurais (neuralnet) e o modelo alométrico de SPURR
+5.  O modelo alométrico é dado por: Volume = b0 + b1 * dap2 * Ht
+6.  Efetue as predições nos dados de teste
+7.  Crie funções e calcule as seguintes métricas entre a predição e os dados observados
+8.  Coeficiente de determinação: R2
+9.  Erro padrão da estimativa: Syx
+10. Escolha o melhor
+
+<br>
+
+##### Carregar o arquivo Volumes.csv
+
+```         
+volumesData <- read.csv2("Volumes.csv")
+```
+
+<br>
+
+##### Eliminar a coluna NR, que só apresenta um número sequencial
+
+```         
+volumes <- volumesData[,c(2:ncol(volumesData))]
+
+
+```
+
+<br>
+
+##### Defindo seed constante
+
+```         
+set.seed(999)
+```
+
+<br>
+
+##### Criar partição de dados: treinamento 80%, teste 20%
+
+```         
+library("caret")
+indices <- createDataPartition(volumes$DAP, p=0.80, list=FALSE)
+treino <- volumes[indices,]
+teste <- volumes[-indices,]
+```
+
+<br>
+
+##### Usando o pacote "caret", treinar os modelos: Random Forest (rf), SVM (svmRadial), Redes Neurais (neuralnet) e o modelo alométrico de SPURR
+
+```
+rf <- train(VOL~., data=treino, method="rf") # Randoim Forest
+svm <- train(VOL~., data=treino, method="svmRadial") # SVM
+rna <- train(VOL~., data=treino, method="nnet", trace=FALSE) # Redes Neurais
+```
+
+<br>
+
+##### O modelo alométrico é dado por: Volume = b0 + b1 * dap2 * Ht
+
+```
+alom <- nls(VOL ~ b0 + b1*DAP*DAP*HT, volumes, start=list(b0=0.5, b1=0.5))
+```
+
+<br>
+
+##### Efetue as predições nos dados de teste
+
+```
+predicoes.rf <- predict(rf, teste)
+predicoes.svm <- predict(svm, teste)
+predicoes.rna <- predict(rna, teste)
+predicoes.alom <- predict(alom, teste)
+```
+
+<br>
+
+##### Crie funções e calcule as seguintes métricas entre a predição e os dados observados
+###### 1 - Índice do Erro quadrático médio
+
+```
+rmseResults <- c()
+rmseResults["rf"] <- RMSE(predicoes.rf, teste$VOL)
+rmseResults["svm"] <- RMSE(predicoes.svm, teste$VOL)
+rmseResults["rna"] <- RMSE(predicoes.rna, teste$VOL)
+rmseResults["alom"] <- RMSE(predicoes.alom, teste$VOL)
+print(rmseResults)
+```
+
+###### 2 - Coeficiente de determinação: R2
+```
+r2 <- function(valorObservado, valorPredito) {
+  mediaValores <- mean(valorObservado)
+  return(1-((sum((valorObservado-valorPredito)^2))/(sum((valorObservado-mediaValores)^2))))
+}
+
+r2Results <- c()
+r2Results['rf'] <- r2(teste$VOL, predicoes.rf)
+r2Results['svm'] <- r2(teste$VOL, predicoes.svm)
+r2Results['rna'] <- r2(teste$VOL, predicoes.rna)
+r2Results['alom'] <- r2(teste$VOL, predicoes.alom)
+print(r2Results)
+```
+
+###### 3 - Erro padrão da estimativa: Syx
+```
+syx <- function(valorObservado, valorPredito) {
+  n <- length(valorObservado)
+  return (sqrt(sum((valorObservado-valorPredito)^2)/(n-2)))
+}
+
+syxResults <- c()
+syxResults['rf'] <- syx(teste$VOL, predicoes.rf)
+syxResults['svm'] <- syx(teste$VOL, predicoes.svm)
+syxResults['rna'] <- syx(teste$VOL, predicoes.rna)
+syxResults['alom'] <- syx(teste$VOL, predicoes.alom)
+print(syxResults)
+```
+
+<br>
+
+##### Escolha o melhor modelo
+Baseado nas métricas calculadas de RSME, R2 e SYX, podemos afirmar que o modelo Alométrico foi o mais eficaz já que teve o valor mais próximo do ideal das 3 métricas realizadas
+
+<br>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
