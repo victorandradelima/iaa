@@ -1,0 +1,409 @@
+---
+title: "Estatística Aplicada II"
+author: 'Aluno: Victor Lima'
+date: 'Data: 20/06/2023'
+output:
+  html_document:
+    df_print: paged
+---
+
+### Primeira Lista de Exercícios
+
+Com a base de dados “imoveiscwbav” obter os seguintes resultados com o auxílio do “R”
+
+1.	Elaborar os modelos Ridge, Lasso e ElasticNet e estimar uma predição para cada um dos modelos (elabore seus próprios valores para a predição). Apresente os parâmetros estimados e os valores resultantes da predição.
+
+<br>
+
+#### 1 - Carregar conjunto de dados e organizar para utilizar nos modelos
+
+```{r}
+load("imoveiscwbav.RData")
+imoveis <- imoveiscwbav
+```
+
+Carregando pacotes necessários
+```{r}
+library(caret)
+library(glmnet)
+```
+
+Fixando randomização para tornar constante os resultados gerados
+```{r}
+set.seed(999)
+```
+
+Separando os índices para treino e teste (80%)
+```{r}
+index = sample(1:nrow(imoveis),0.8*nrow(imoveis))
+train = imoveis[index,] # Dados de treino
+test = imoveis[-index,] # Dados de teste
+```
+
+Selecionando as colunas que devem ser padronizadas
+```{r}
+cols = c('price', 'age', 'parea', 'tarea', 'bath', 'ensuit', 'garag', 'plaz', 'park', 'trans', 'kidca', 'school', 'health', 'bike')
+```
+
+Padronizando os dados que não são binários
+```{r}
+pre_proc_val <- preProcess(train[,cols], method = c("center", "scale"))
+train[,cols] = predict(pre_proc_val, train[,cols])
+test[,cols] = predict(pre_proc_val, test[,cols])
+```
+
+Criando um vetor com as variáveis em uso
+```{r}
+cols_reg = c('price', 'age', 'parea', 'tarea', 'bath', 'ensuit', 'garag', 'plaz','park', 'trans', 'kidca', 'school', 'health', 'bike', 'barb', 'balc', 'elev', 'fitg', 'party', 'categ')
+```
+
+Gerando dummies para organizar o conjunto de dados no objeto matriz
+```{r}
+dummies <- dummyVars(price ~ age+parea+tarea+bath+ensuit+garag+plaz+park+trans+kidca+school+health+bike+
+                       barb+balc+elev+fitg+party+categ,data = imoveis[,cols_reg])
+train_dummies = predict(dummies, newdata = train[,cols_reg])
+test_dummies = predict(dummies, newdata = test[,cols_reg])
+```
+
+O conjunto de dados da matriz para o modelo
+```{r}
+x = as.matrix(train_dummies)
+y_train = train$price
+x_test = as.matrix(test_dummies)
+y_test = test$price
+```
+
+<br>
+
+#### 2 - Organizando os dados que serão usados para testar os modelos
+Como os valores do conjunto de dados são padronizados, também temos que padronizar os dados que queremos prever
+
+```{r}
+age = (14-pre_proc_val[["mean"]][["age"]])/pre_proc_val[["std"]][["age"]] # age = 14
+parea = (120-pre_proc_val[["mean"]][["parea"]])/pre_proc_val[["std"]][["parea"]] # parea = 120
+tarea = (180-pre_proc_val[["mean"]][["tarea"]])/pre_proc_val[["std"]][["tarea"]] # tarea = 180
+bath = (3-pre_proc_val[["mean"]][["bath"]])/pre_proc_val[["std"]][["bath"]] # bath = 3
+ensuit = (3-pre_proc_val[["mean"]][["ensuit"]])/pre_proc_val[["std"]][["ensuit"]] # ensuit = 3
+garag = (2-pre_proc_val[["mean"]][["garag"]])/pre_proc_val[["std"]][["garag"]] # garag = 2
+plaz = (0-pre_proc_val[["mean"]][["plaz"]])/pre_proc_val[["std"]][["plaz"]] # plaz = 0
+park = (2-pre_proc_val[["mean"]][["park"]])/pre_proc_val[["std"]][["park"]] # park = 2
+trans = (2-pre_proc_val[["mean"]][["trans"]])/pre_proc_val[["std"]][["trans"]] # trans = 2
+kidca = (1.5-pre_proc_val[["mean"]][["kidca"]])/pre_proc_val[["std"]][["kidca"]] # kidca = 1.5
+school = (1-pre_proc_val[["mean"]][["school"]])/pre_proc_val[["std"]][["school"]] # school = 0.5
+health = (0.5-pre_proc_val[["mean"]][["health"]])/pre_proc_val[["std"]][["health"]] # health = 0.5
+bike = (0.5-pre_proc_val[["mean"]][["bike"]])/pre_proc_val[["std"]][["bike"]] # bike = 0.5
+barb = 0 # barb = 0
+balc = 0 # balc = 0
+elev = 0 # elev = 0
+fitg = 0 # fitg = 0
+party = 1 # party = 1
+categ = 1 # categ = 1
+```
+
+Construindo uma matriz de dados para previsão
+```{r}
+our_pred = as.matrix(data.frame(age=age, parea=parea, tarea=tarea, bath=bath, ensuit=ensuit, garag=garag, plaz=plaz, park=park, trans=trans, kidca=kidca, school=school, health=health, bike=bike, barb=barb, balc=balc, elev=elev, fitg=fitg, party=party, categ=categ))
+```
+
+<br>
+
+#### 3 - Rotina para calcular R² e RMSE a partir de valores verdadeiros e previstos
+
+```{r}
+eval_results <- function(true, predicted, df) {
+  SSE <- sum((predicted - true)^2)
+  SST <- sum((true - mean(true))^2)
+  R_square <- 1 - SSE / SST
+  RMSE = sqrt(SSE/nrow(df))
+  # Métricas de desempenho do modelo
+  data.frame(RMSE = RMSE, Rsquare = R_square)
+}
+```
+
+<br>
+
+#### 4 - Regressão Ridge
+
+Cálculo do valor lambda ótimo
+```{r}
+lambdas_ridge <- 10^seq(2, -3, by = -.1)
+ridge_lamb <- cv.glmnet(x, y_train, alpha = 0, lambda = lambdas_ridge)
+best_lambda_ridge <- ridge_lamb$lambda.min
+best_lambda_ridge
+```
+
+<b>Treinamento do modelo</b>
+
+Modelo de estimativa
+```{r}
+ridge_reg = glmnet(x, y_train, nlambda = 25, alpha = 0, family = 'gaussian', lambda = best_lambda_ridge)
+summary(ridge_reg)
+```
+
+Os valores dos parâmetros
+```{r}
+ridge_reg[["beta"]]
+```
+
+<b>Fazendo previsões e avaliando o modelo</b>
+
+Previsão e avaliação de dados de treino
+```{r}
+predictions_train_ridge <- predict(ridge_reg, s = best_lambda_ridge, newx = x)
+```
+
+Métricas de desempenho do modelo para os dados de treino
+```{r}
+eval_results(y_train, predictions_train_ridge, train)
+```
+
+Previsão e avaliação em dados de teste
+```{r}
+predictions_test_ridge <- predict(ridge_reg, s = best_lambda_ridge, newx = x_test)
+```
+
+Métricas de desempenho do modelo para os dados de teste
+```{r}
+eval_results(y_test, predictions_test_ridge, test)
+```
+
+Fazendo a previsão
+```{r}
+predict_our_ridge <- predict(ridge_reg, s = best_lambda_ridge, newx = our_pred)
+predict_our_ridge
+```
+
+O resultado é um valor padronizado, vamos convertê-lo em valor nominal, consistente com o banco de dados original
+O valor predito é de R$ 1.112.961,00
+```{r}
+price_pred_ridge=(predict_our_ridge*pre_proc_val[["std"]][["price"]])+pre_proc_val[["mean"]][["price"]]
+price_pred_ridge
+```
+
+Intervalos de confiança para nosso exemplo
+
+```{r}
+n_ridge <- nrow(train)
+m_ridge <- price_pred_ridge
+s_ridge <- pre_proc_val[["std"]][["price"]]
+dam_ridge <- s_ridge/sqrt(n_ridge)
+CIlwr_ridge <- m_ridge + (qnorm(0.025))*dam_ridge
+CIupr_ridge <- m_ridge - (qnorm(0.025))*dam_ridge
+```
+
+```{r}
+CIlwr_ridge
+```
+Valor superior: R$ 1.063.056,00
+```{r}
+CIupr_ridge
+```
+Valor Inferior: R$ 1.162.867,00
+
+<br>
+
+#### 5 - Regressão Lasso
+
+Encontrando o melhor lambda e definindo alfa = 1 para implementar a regressão de Lasso
+```{r}
+lambdasLasso <- 10^seq(2, -3, by = -.1)
+lasso_lamb <- cv.glmnet(x, y_train, alpha = 1, lambda = lambdasLasso, standardize = TRUE, nfolds = 5)
+```
+
+Melhor lambda
+```{r}
+best_lambda_lasso <- lasso_lamb$lambda.min 
+best_lambda_lasso
+```
+
+<b>Treinamento do modelo</b>
+
+Refazendo o modelo com o melhor lambda
+```{r}
+lasso_model <- glmnet(x, y_train, alpha = 1, lambda = best_lambda_lasso, standardize = TRUE)
+```
+
+Como visualizar os parâmetros estimados
+```{r}
+lasso_model[["beta"]]
+```
+
+<b>Fazendo previsões e avaliando o modelo</b>
+
+Previsão e avaliação de dados de treino
+```{r}
+predictions_train_Lasso <- predict(lasso_model, s = best_lambda_lasso, newx = x)
+```
+
+Métricas de desempenho do modelo para os dados de treino
+```{r}
+eval_results(y_train, predictions_train_Lasso, train)
+```
+
+Previsão e avaliação em dados de teste
+```{r}
+predictions_test_Lasso <- predict(lasso_model, s = best_lambda_lasso, newx = x_test)
+```
+
+Métricas de desempenho do modelo para os dados de teste
+```{r}
+eval_results(y_test, predictions_test_Lasso, test)
+```
+
+Previsão para o nosso exemplo, fazendo as previsões com base nos mesmos parâmetros da regressão de Lasso
+```{r}
+predict_our_lasso <- predict(lasso_model, s = best_lambda_lasso, newx = our_pred)
+predict_our_lasso
+```
+
+Novamente, a informação que ele retorna é padronizada, temos que convertê-la para um valor compatível com o conjunto de dados original
+Valor predito:  1.127.815,00
+```{r}
+price_pred_lasso=(predict_our_lasso*pre_proc_val[["std"]][["price"]])+pre_proc_val[["mean"]][["price"]]
+price_pred_lasso
+```
+
+Intervalos de confiança para o nosso exemplo
+```{r}
+n_lasso <- nrow(train)
+m_lasso <- price_pred_lasso
+s_lasso <- pre_proc_val[["std"]][["price"]]
+dam_lasso <- s_lasso/sqrt(n_lasso)
+CIlwr_lasso <- m_lasso + (qnorm(0.025))*dam_lasso
+CIupr_lasso <- m_lasso - (qnorm(0.025))*dam_lasso 
+```
+
+```{r}
+CIlwr_lasso
+```
+Valor superior: R$ 1.077.910,00
+```{r}
+CIupr_lasso
+```
+Valor Inferior: R$ 1.177.721,00
+
+<br>
+
+#### 6 - Regressão ElasticNet
+
+Definir controle de treinamento
+```{r}
+train_cont_elasticNet <- trainControl(method = "repeatedcv", number = 10, repeats = 5, search = "random", verboseIter = FALSE, returnData = FALSE)
+```
+
+<b>Treinamento do modelo</b>
+
+Não temos o parâmetro "alpha", porque a Regressão ElasticNet vai encontrá-lo automaticamente, cujo valor estará entre 0 e 1. O parâmetro "lambda" também é escolhido por validação cruzada.
+```{r}
+elastic_reg <- train(price ~ age+parea+tarea+bath+ensuit+garag+plaz+park+trans+kidca+school+health+bike+barb+balc+elev+fitg+party+categ, data = train, method = "glmnet", tuneLength = 10, trControl = train_cont_elasticNet)
+```
+
+Melhor parâmetro de ajuste
+```{r}
+elastic_reg$bestTune
+```
+
+<b>Fazendo previsões e avaliando o modelo</b>
+
+Previsão e avaliação de dados de treino
+```{r}
+predictions_train_elasticNet <- predict(elastic_reg, x)
+```
+
+Métricas de desempenho do modelo para os dados de treino
+```{r}
+eval_results(y_train, predictions_train_elasticNet, train)
+```
+
+Previsão e avaliação em dados de teste
+```{r}
+predictions_test_elasticNet <- predict(elastic_reg, x_test)
+```
+
+Métricas de desempenho do modelo para os dados de teste
+```{r}
+eval_results(y_test, predictions_test_elasticNet, test)
+```
+
+Fazendo a previsão
+```{r}
+predict_our_elastic <- predict(elastic_reg,our_pred)
+predict_our_elastic
+```
+
+O resultado é um valor padronizado, vamos convertê-lo em valor nominal, consistente com o banco de dados original
+
+O valor predito é de R$ 1.124.279,00
+```{r}
+price_pred_elastic=(predict_our_elastic*pre_proc_val[["std"]][["price"]])+pre_proc_val[["mean"]][["price"]]
+price_pred_elastic
+```
+
+Intervalos de confiança para o nosso exemplo
+```{r}
+n_elasticnet <- nrow(train)
+m_elasticnet <- price_pred_elastic
+s_elasticnet <- pre_proc_val[["std"]][["price"]]
+dam_elasticnet <- s_elasticnet/sqrt(n_elasticnet)
+CIlwr_elasticnet <- m_elasticnet + (qnorm(0.025))*dam_elasticnet
+CIupr_elasticnet <- m_elasticnet - (qnorm(0.025))*dam_elasticnet
+```
+
+```{r}
+CIlwr_elasticnet
+```
+Valor superior: R$ 1.074.373,00
+```{r}
+CIupr_elasticnet
+```
+Valor Inferior: R$ 1.174.184,00
+
+
+<br>
+
+#### 7 - Organizando os resultados finais
+
+Exibindo em um dataframe todos os resultados para facilitar a avaliação dos modelos
+
+```{r}
+results <- data.frame(model=c("ridge", "lasso", "elasticnet"), predict=c(price_pred_ridge, price_pred_lasso, price_pred_elastic), lowerConfidence=c(CIlwr_ridge, CIlwr_lasso, CIlwr_elasticnet), upperConfidence=c(CIupr_ridge, CIupr_lasso, CIupr_elasticnet), stringsAsFactors=FALSE)
+results
+```
+
+
+
+<p style="text-align: center;"><i>Fim.</i></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

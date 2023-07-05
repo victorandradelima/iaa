@@ -1,0 +1,381 @@
+---
+title: "Estatística Aplicada II"
+author: 'Aluno: Victor Lima'
+date: 'Data: 02/07/2023'
+output:
+  html_document:
+    df_print: paged
+---
+
+## Segunda Lista de Exercícios
+
+Com a base de dados “prodbebidas” (dados mensais do índice de produção de bebidas no Brasil) obter os seguintes resultados com o auxílio do “R”
+
+Fazer a todos os testes estatísticos e gráficos necessários e a predição para os próximos 6 meses do índice de produção de bebidas para os seguintes modelos:
+
+I.	ETS;
+II.	ARIMA OU SARIMA (verificar se existe sazonalidade ou não e decidir qual modelo é mais adequado)
+
+Obs: separe os últimos 12 meses da série para testar o modelo.
+
+
+<br>
+
+### 1 - Criando e analisando os dados
+
+<br>
+
+#### 1.1 - Carregar conjunto de dados e organizar para utilizar nos modelos
+
+```{r}
+library(readxl)
+prodbebidas <- read_excel('prodbebidas.xls')
+head(prodbebidas)
+```
+
+<br>
+
+#### 1.2 - Convertendo os valores da coluna "Datas" para o tipo data
+```{r}
+dates <- unlist(prodbebidas[,1])
+datesFormat <- c()
+for (date in dates) {
+  year <- substr(date, start = 1, stop = 4)
+  month <- substr(date, start = 6, stop = 8)
+  # cat(month, '/' , year, '\n')
+  datesFormat <- c(datesFormat, paste0(year,'-',month,'-01'))
+}
+prodbebidas <- subset(prodbebidas, select = -Data)
+prodbebidas <- cbind(prodbebidas, Datas = as.Date(datesFormat))
+```
+
+<br>
+
+#### 1.3 - Criando uma série temporal com a tabela de dados
+```{r}
+prodbebidas_ts <- ts(data = prodbebidas[, 1], start = c(2002, 1), end = c(2022, 4), frequency = 12)
+```
+
+<br>
+
+#### 1.4 - Protando um gráfico para ver a distribuição dos valores no tempo
+```{r}
+library('ggplot2')
+library('forecast')
+prodbebidas %>%
+  ggplot() +
+  geom_line(aes(x = Datas, y = Prodbebidas, group = TRUE, color = "Prodbebidas"), linewidth = 0.8) +
+  scale_color_viridis_d() +
+  scale_y_continuous(labels = scales::comma) +
+  scale_x_date(date_labels = "%m-%Y", date_breaks = "1 year") +
+  theme(axis.text.x = element_text(angle = 90,  vjust = 0.4),
+        panel.background = element_rect(fill = "white", color = "black"),
+        panel.grid = element_line(color = "grey90"),
+        panel.border = element_rect(color = "black", fill = NA),
+        legend.position = "none")
+```
+
+<br>
+
+#### 1.5 - Decompondo os valores pelo modelo aditivo
+```{r}
+decprodbebidas <- decompose(x = prodbebidas_ts, type = "additive")
+```
+
+<br>
+
+#### 1.6 - Inserindo os objetos decompostos em um dataframe
+```{r}
+library('dplyr')
+decprodbebidas_df <- data.frame(tempo = prodbebidas$Datas, serie = unlist(prodbebidas$Prodbebidas), tendencia = unlist(decprodbebidas$trend), sazonalidade = unlist(decprodbebidas$seasonal), dessazonalizada = prodbebidas_ts - decprodbebidas$seasonal, erro = unlist(decprodbebidas$random)) %>% rename(tempo = 1, serie = 2, tendencia = 3, sazonalidade = 4, dessazonalizada = 5, erro = 6)
+```
+
+<br>
+
+#### 1.7 - Inserindo os objetos decompostos em um dataframe
+```{r}
+library('dplyr')
+decprodbebidas_df <- data.frame(tempo = prodbebidas$Datas, serie = unlist(prodbebidas$Prodbebidas), tendencia = unlist(decprodbebidas$trend), sazonalidade = unlist(decprodbebidas$seasonal), dessazonalizada = prodbebidas_ts - decprodbebidas$seasonal, erro = unlist(decprodbebidas$random)) %>% rename(tempo = 1,serie = 2, tendencia = 3, sazonalidade = 4, dessazonalizada = 5,erro = 6)
+```
+
+<br>
+
+#### 1.8 - Plotando todos os dados da decomposição juntos
+```{r}
+decprodbebidas_df %>%
+  ggplot() + geom_line(aes(x = tempo, y = serie, color = "Serie values"), linewidth = 1.2) + geom_line(aes(x = tempo, y = tendencia, color = "Trend"), linewidth = 1) + geom_line(aes(x = tempo, y = sazonalidade, color = "Seasonality"), linewidth = 1.2) + geom_line(aes(x = tempo, y = erro, color = "Error"), linewidth = 1) +  scale_x_date(date_labels = "%m-%Y", date_breaks = "1 year") + scale_y_continuous(labels = scales::comma) + labs(color = "Legend:", x = NULL, y = NULL) + scale_color_manual(values = c("#440154FF", "#3CBB75FF", "#39568CFF", "#DCE319FF")) + theme(axis.text.x = element_text(angle = 90, vjust = 0.4), panel.background = element_rect(fill = "white", color = "black"), panel.grid = element_line(color = "grey90"), panel.border = element_rect(color = "black", fill = NA), legend.position = "bottom")
+```
+
+<br>
+
+#### 1.9 - Plotando todos os dados da decomposição juntos
+```{r}
+decprodbebidas_df %>%
+  ggplot() + geom_line(aes(x = tempo, y = serie, color = "Serie values"), linewidth = 1.2) + geom_line(aes(x = tempo, y = tendencia, color = "Trend"), linewidth = 1) + geom_line(aes(x = tempo, y = sazonalidade, color = "Seasonality"), linewidth = 1.2) + geom_line(aes(x = tempo, y = erro, color = "Error"), linewidth = 1) +  scale_x_date(date_labels = "%m-%Y", date_breaks = "1 year") + scale_y_continuous(labels = scales::comma) + labs(color = "Legend:", x = NULL, y = NULL) + scale_color_manual(values = c("#440154FF", "#3CBB75FF", "#39568CFF", "#DCE319FF")) + theme(axis.text.x = element_text(angle = 90, vjust = 0.4), panel.background = element_rect(fill = "white", color = "black"), panel.grid = element_line(color = "grey90"), panel.border = element_rect(color = "black", fill = NA), legend.position = "bottom")
+```
+
+
+### 2 - Modelo ETS
+
+<br>
+
+#### 2.1 - Isolando apenas os valores
+```{r}
+prodbebidasvalues=prodbebidas[1]
+```
+
+<br>
+
+#### 2.2 - Criando a série temporal
+```{r}
+prodbebidasvaluests=ts(prodbebidasvalues, start=c(2002, 1), end=c(2022, 4), frequency=12)
+```
+
+<br>
+
+#### 2.3 - Separando os dados de treino e teste do modelo
+Foi solicitado que os último 12 meses, devem ser usados para teste
+
+###### 2.3.1 - Separando os dados de treino
+```{r}
+prodbebidastreino=window(prodbebidasvaluests,start=c(2002,1), end=c(2021,4))
+```
+
+###### 2.3.2 - Separando os dados de teste
+```{r}
+prodbebidasteste=window(prodbebidasvaluests,start=c(2021,5), end=c(2022,4))
+```
+
+<br>
+
+#### 2.4 - Estimando o modelo ETS
+```{r}
+prodbebidastreino.ets <- ets(prodbebidastreino)
+summary(prodbebidastreino.ets)
+```
+
+<br>
+
+#### 2.5 - Fazendo a previsao no modelo ETS para 12 meses 
+```{r}
+prodbebidasvaluests.ets.forecasts <- forecast.ets(prodbebidastreino.ets, h = 12)
+summary(prodbebidasvaluests.ets.forecasts)
+```
+
+<br>
+
+#### 2.6 - Plotando gráfico com a predição
+```{r}
+library('plotly')
+ggplotly(
+  autoplot(prodbebidastreino.ets)+
+    autolayer(prodbebidasteste, serie="Real values")+
+    autolayer(prodbebidasvaluests.ets.forecasts$mean, serie="Forecast")+
+    scale_colour_viridis_d()+
+    scale_y_continuous(labels=scales::comma)+
+    theme_bw()
+)
+```
+
+<br>
+
+#### 2.7 - Verificando as estatísticas de precisão no conjunto de dados de teste
+```{r}
+library('forecast')
+forecast::accuracy(prodbebidasvaluests.ets.forecasts$mean,prodbebidasteste)
+```
+
+<br>
+
+#### 2.8 - Plotando os resíduos estimados
+```{r}
+plot(prodbebidastreino.ets$residuals)
+```
+
+<br>
+
+#### 2.9 - Plotando o gráfico de autocorrelação dos resíduos
+```{r}
+acf(prodbebidastreino.ets$residuals)
+```
+
+Pela visualização do gráfico podemos afirmar que não existe correlação significante entre os resíduos, já que nenhum resultado (além do primeiro) ultrapassa a tolerância da média dos resíduos.
+
+
+<br>
+
+#### 2.10 - Verificando se o modelo possui desajustes
+```{r}
+Box.test(prodbebidastreino.ets$residuals, lag=1, type=c("Ljung-Box"))
+```
+
+Como o valor do p é maior que 0.05, podemos afirmar que o mesmo não possui desajustes.
+
+
+### 3 - Modelo ARIMA/SARIMA
+
+##### PS - Vamos usar os mesmos valores de treino e teste do modelo ETS
+```{r}
+# prodbebidasvaluests # série temporal
+# prodbebidastreino # dados de treino
+# prodbebidasteste # dados de teste
+```
+
+<br>
+
+##### 3.1 - Teste de sazonalidade
+Vamos verificar a sazonalidade do da série, pois o modelo ARIMA não é utilizado em séries com sazonalidade, para isso usamos o modelo SARIMA
+
+```{r}
+library(seastests)
+seastests::combined_test(prodbebidasvaluests)
+```
+
+Como os valores de P são menores do que 0,01 (QS-test) e 0,002 (kw-test) respectivamente, então podemos afirmar que se trata de uma série com sazonalidade.
+Desta forma deve-se usar o modelo SARIMA
+
+<br>
+
+#### 3.2 - Teste Estacionário (Dickey-Fuller)
+```{r}
+library('urca')
+prodbebidastreinodf=ur.df(prodbebidastreino, selectlags = 'BIC', type = 'none')
+prodbebidastreinodf
+prodbebidastreinodf=ur.df(prodbebidastreino, selectlags = 'BIC', type = 'drift')
+prodbebidastreinodf
+prodbebidastreinodf=ur.df(prodbebidastreino, selectlags = 'BIC', type = 'trend')
+prodbebidastreinodf
+```
+
+Como os valores de ```z.lag.1``` são significativamente diferentes nos 3 testes, não podemos afirmar que este modelo está estacionário.
+
+<br>
+
+#### 3.3 - Aplicando a função de diferenciação para torna-la estacionária
+```{r}
+difprodbebidastreino <- diff(prodbebidastreino)
+ggtsdisplay(difprodbebidastreino)
+```
+
+<br>
+
+#### 3.4 - Repetindo o teste Dickey-Fuller para verificar se está estacionária
+```{r}
+difprodbebidastreinodf=ur.df(difprodbebidastreino, selectlags = 'BIC', type = 'none')
+difprodbebidastreinodf
+difprodbebidastreinodf=ur.df(difprodbebidastreino, selectlags = 'BIC', type = 'drift')
+difprodbebidastreinodf
+difprodbebidastreinodf=ur.df(difprodbebidastreino, selectlags = 'BIC', type = 'trend')
+difprodbebidastreinodf
+```
+
+Agora podemos verificar que os valores de z.lag.1 são siginificativamente iguais. Logo podemos afirmar que a série após aplicar as diferenciações está estacionária.
+
+<br>
+
+#### 3.5 - Aplicando a função auto.arima, que sozinha identifica que existe a sazonalidade e aplica o modelo SARIMA
+```{r}
+arimaprodbebidas=auto.arima(prodbebidastreino, trace=F)
+```
+
+<br>
+
+#### 3.6 - Teste de resíduo de Ljung-Box
+```{r}
+checkresiduals(arimaprodbebidas)
+```
+
+No teste de resíduos estamos verificando se os mesmos nao são correlacionados. Logo, como o valor de p (0.007024), é maior do que 0.05 podemos aceitar a hipótese de que os resíduos não são correlacionados.
+
+<br>
+
+#### 3.7 - Teste de normalidade
+```{r}
+ks.test(arimaprodbebidas$residuals, "pnorm", mean(arimaprodbebidas$residuals), sd(arimaprodbebidas$residuals))
+```
+
+Como o valor de p é maior do que 0.05, podemos afirmar a hipótese de que existe normalidade nos resíduos
+
+<br>
+
+#### 3.8 - Teste de estacionariedade da variância
+Verificando de existe o efeito ARCH/GARCH, ou seja, evidência de heterocedasticidade
+```{r}
+library('FinTS')
+ArchTest(arimaprodbebidas$residuals)
+```
+
+Como o Valor de p (0.001644) é menor do que 0.05, podemos afirmar que a hipótese válida é que existe heterocedasticidade da variância.
+
+<br>
+
+#### 3.9 - Realizando a predição dos valores
+```{r}
+prevprodbebidas=forecast::forecast(arimaprodbebidas, h=12)
+prevprodbebidas
+autoplot(prevprodbebidas) + theme_bw()
+```
+
+<br>
+
+#### 3.10 - Verificando a acurácia do modelo
+```{r}
+forecast::accuracy(prevprodbebidas, prodbebidasteste)
+```
+
+<br>
+
+#### 3.10 - Plotando gráfico de valores Preditos e valores reais
+```{r}
+ggplotly(
+  autoplot(prodbebidastreino)+
+    autolayer(prodbebidasteste,serie="Valores Reais")+
+    autolayer(prevprodbebidas$mean, serie="Forecast")+
+    scale_colour_viridis_d()+
+    scale_y_continuous(labels=scales::comma)+
+    theme_bw()
+)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,244 @@
+---
+title: "Estatística Aplicada I"
+author: 'Aluno: Victor Lima'
+date: 'Data: 18/06/2023'
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+### Terceira Lista de Exercícios
+
+Com a base de dados “imoveiscwbav” obter os seguintes resultados com o auxílio do “R”
+
+  1.	Elaborar os modelos Ridge, Lasso e ElasticNet e estimar uma predição para cada um dos modelos (elabore seus próprios valores para a predição). Apresente os parâmetros estimados e os valores resultantes da predição.
+
+
+
+#### 1 - Carregar conjunto de dados
+
+```{r}
+load("imoveiscwbav.RData")
+imoveis <- imoveiscwbav
+```
+
+```{r}
+head(imoveis)
+```
+
+<br>
+
+#### 2 - Estimar um modelo preliminar
+Gerando um Regressão Linear tomando como referência o preço dos imóveis.
+
+```{r}
+resultados <- lm (price~., data=imoveis)
+summary (resultados)
+```
+
+<br>
+
+#### 3 - Manipulando alguns parâmetros para melhorar a significância das mesmas
+a) Substituindo o "price" e "tarea" por uma variável que representa o log natural do preço do metro quadrado do imóvel.
+```{r}
+imoveis$lnPricePerMeter <- with(imoveis, log(price/tarea))
+```
+
+<br>
+
+#### 4 - Reestimar o modelo com a variável "lnPricePerMeter" ao invés de "price" e "tarea"
+```{r}
+resultados <- lm (lnPricePerMeter~.-price-tarea, data=imoveis)
+summary (resultados)
+```
+
+<br>
+
+#### 5 - Verificar os outliers pelo teste de Bonferroni
+```{r}
+library (carData)
+library(car)
+outliers <- outlierTest(resultados)
+print(outliers)
+```
+Com a manipulação que foi realizada com as parâmentros, vemos que não foram observados nenhum outlier para ser descartado.
+
+<br>
+
+#### 6 - Realizar um teste Stepwise, para verificar quais variáveis devem efetivamente entrar no modelo
+```{r}
+library(RcmdrMisc)
+stepwise <- stepwise(resultados, direction= 'backward/forward', criterion ='AIC', trace = FALSE)
+```
+Verificando a variável call do teste Stepwise, que sugere o melhor modelo de parâmetros a serem utilizados, supondo a melhor siginificância.
+```{r}
+print(stepwise$call)
+```
+Adicionar os parâmentros que o modelo sugeriu em uma variável para facilitar a utilização
+```{r}
+parametersStepwise <- lnPricePerMeter ~ age + ensuit + garag + plaz + park + trans + bike + balc + elev + fitg + party + categ
+```
+Atualizado o modelo atual para utilizar a sugestão do teste Stepwise
+```{r}
+resultados <- lm(formula = parametersStepwise, data=imoveis)
+summary (resultados)
+```
+
+<br>
+
+#### 7 - Verificar a existência de multicolineariedade
+```{r}
+car::vif(resultados)
+```
+Vamos usar como base que o fator de inflação da variância deve ser maior do que 5 para ter uma correlação siginificativa. Desta forma, nenhum dado deve ser desconsiderado por multicolineariedade.
+
+<br>
+
+#### 8 - Teste de especificação do modelo (Teste RESET)
+```{r}
+library (zoo)
+library (lmtest)
+resettest(parametersStepwise, power=2:3, type="regressor", data=imoveis)
+```
+Verificando o valor tabelado para considerar uma especificação correta do modelo.
+```{r}
+qf(.95,df1=24,df2=504)
+```
+Desta forma como o valor apresentado do RESET é ```1.0909```, que é menor do que o valor tabelado de ```1.538985```, podemos afirmar que o modelo foi corretamente especificado.
+
+<br>
+
+#### 9 - Verificação de heterocedasticidade
+Teste utilizado: Teste de Breusch-Pagan
+```{r}
+bptest(parametersStepwise, studentize=FALSE, data=imoveis)
+```
+Verificando valor tabelado para avaliação de heterocedasticidade
+```{r}
+qchisq(0.95, df=12)
+```
+Desta forma, observando o valor BP do teste que é de ```30.548```, que é maior que o valor tabelado de ```21.02607```, podemos afirmar que este modelo possui problemas de heterocedasticidade.
+<br>
+```{r}
+print(resultados)
+```
+
+<br>
+
+#### 10 - Correção da variância não constante por regressão robusta
+```{r}
+library (sandwich)
+coeftest(resultados, vcov=vcovHC(resultados, type="HC1"))
+```
+Pelo teste T de coeficientes, vemos que as vairáveis `trans` e `party` não são siginificativas ao modelo, e podemos removê-las à fim de corrigir o problema de heterocedasticidade.
+```{r}
+parametersStepwiseWithTTeste <- lnPricePerMeter ~ age + ensuit + garag + plaz + park + bike + balc + elev + fitg + categ
+resultados <- lm(formula = parametersStepwiseWithTTeste, data=imoveis)
+summary (resultados)
+```
+Agora, iremos compilar novamente o teste de Breusch-Pagan, e verificar se a heterocedasticidade foi corrigida.
+```{r}
+bptest(parametersStepwiseWithTTeste, studentize=FALSE, data=imoveis)
+qchisq(0.95, df=10)
+```
+Como observado o valor de BP `26.779`, mesmo que seja menor que o valor anterior, ainda está acima do valor tabelado de `18.30704` para considerar um modelo com homocedasticidade.
+
+<br>
+
+#### 11 - Calcular os intervalos de confiança para regressão linear robusta
+```{r}
+confint <- confint (resultados, level = 0.95)
+confint
+```
+
+<br>
+
+#### 12 - Análise dos indicadores de performace do modelo final
+```{r}
+library(performance)
+model_performance(resultados)
+```
+Não será o caso desta atividade, mas podemos usar estes valores de performance para comparar com o resultado de outros modelo que podem serdesenvolvidos para a mesma base de dados.
+
+<br>
+
+#### 13 - Realizar teste com dados fictícios
+Vamos criar um dataframe com apenas uma linha onde teremos nossos dados fictícios para teste.
+```{r}
+testeList <- list()
+testeList["tarea"] <- 183
+testeList["age"] <- 14
+testeList["ensuit"] <- 1
+testeList["garag"] <- 2
+testeList["plaz"] <- 0
+testeList["park"] <- 2
+testeList["bike"] <- 0.5
+testeList["balc"] <- 0
+testeList["elev"] <- 0
+testeList["fitg"] <- 0
+testeList["categ"] <- 1
+teste <- data.frame(testeList)
+print(teste)
+```
+Realizando a predileção do valor do parâmentro `lnPricePerMeter`
+```{r}
+predito <- predict(object = resultados, teste)
+predito
+```
+Como o valor do parâmento `lnPricePerMeter` não representa o valor do preço final, vamos fazer um calculo reverso de sua concepção para encontrar o valor predito do parâmentro `price`
+```{r}
+preditoFinal <- (exp(predito))*teste$tarea
+preditoFinal
+# Valor formatado: R$ 772.241,00
+```
+
+<br>
+
+#### 14 - Estimar o preço inferior do intervalo de confiança
+```{r}
+Lestimate=confint[1,1] + confint[2,1]*teste$age + confint[3,1]*teste$ensuit + confint[4,1]*teste$garag +
+  confint[5,1]*teste$plaz + confint[6,1]*teste$park + confint[7,1]*teste$bike + confint[8,1]*teste$balc +
+  confint[9,1]*teste$elev + confint[10,1]*teste$fitg + confint[11,1]*teste$categ
+LestimateFormat <- (exp(Lestimate))*teste$tarea
+LestimateFormat # R$ 487.102,40
+```
+
+<br>
+
+#### 15 - Estimar o preço superior do intervalo de confiança
+```{r}
+Uestimate=confint[1,2] + confint[2,2]*teste$age + confint[3,2]*teste$ensuit + confint[4,2]*teste$garag +
+  confint[5,2]*teste$plaz + confint[6,2]*teste$park + confint[7,2]*teste$bike + confint[8,2]*teste$balc +
+  confint[9,2]*teste$elev + confint[10,2]*teste$fitg + confint[11,2]*teste$categ
+UestimateFormat <- (exp(Uestimate))*teste$tarea
+UestimateFormat # R$ 1.224.293,00
+```
+
+<br>
+
+#### 16 - Estimar o intervalo de confiança para a média
+```{r}
+n <- nrow(imoveis)
+m <- preditoFinal
+s <- sd(imoveis$price)
+dam <- s/sqrt(n)
+CIlwr <- m + (qnorm(0.025))*dam
+CIupr <- m - (qnorm(0.025))*dam
+# Valor médio inferior: 728692.7 (R$ 728.692,70)
+# Valor médio supeior: 815789.4 (R$ 815.789,40)
+```
+
+<br>
+
+### Conclusão
+Como podemos observar nos dados de predileção, e comparando com os dados do intervalo de confiança para a média, temos uma distância ainda siginificativa do valor predito com a confiança do mesmo, pois vemos uma diferença de 36% entre eles. Esses valores na prática podem não ser efetivos, e podemos imaginar que este problema deve-se ao fato do que vimos nos testes de heterocedasticidade do modelo, que não conseguiu passar, mesmo após as correções realizadas com o teste de coeficiente T. Assim, implicando que temos um grupo de dados prejudicial para a configuração do modelo, e levando a uma conclusão que devemos reformular os dados e parâmentros utilizados ou substituir a base de dados.
+
+<br>
+<br>
+
+<p style="text-align: center;"><i>Fim.</i></p>
+
+
+
+
